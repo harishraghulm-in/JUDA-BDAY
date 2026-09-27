@@ -1,401 +1,212 @@
-import { Wish } from '../types';
-import { DEFAULT_APPS_SCRIPT_URL, INITIAL_SAMPLE_WISHES, STORAGE_KEY_APPS_SCRIPT_URL } from '../config';
+// Service to fetch wishes from Google Sheets (via Apps Script) with robust fallbacks
+import { DEFAULT_APPS_SCRIPT_URL } from '../config';
 
-const STORAGE_KEY_LOCAL_WISHES = 'judath_birthday_local_wishes';
-const STORAGE_KEY_DELETED_IDS = 'judath_birthday_deleted_ids';
+export interface Wish {
+  id: string;
+  name: string;
+  relationship: string;
+  wish: string;
+  photoUrl?: string;
+  timestamp: string;
+  source?: 'sheet' | 'local' | 'demo';
+  rowNumber?: number;
+}
 
-/**
- * Normalizes any Google Drive or cloud image URL into a high-reliability direct view URL.
- */
-export function normalizeImageUrl(url: string | undefined | null): string {
-  if (!url || typeof url !== 'string') return '';
-  const trimmed = url.trim();
-  if (!trimmed) return '';
+const STORAGE_KEY_WISHES = 'judath_birthday_wishes_cache';
+const STORAGE_KEY_SCRIPT_URL = 'judath_birthday_script_url';
 
-  // Extract Google Drive ID if present
-  const driveIdMatch =
-    trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/) ||
-    trimmed.match(/id=([a-zA-Z0-9_-]+)/) ||
-    trimmed.match(/open\?id=([a-zA-Z0-9_-]+)/) ||
-    trimmed.match(/file\/d\/([a-zA-Z0-9_-]+)/);
+export function extractDriveFileId(rawUrl: string): string | null {
+  if (!rawUrl) return null;
+  const match = rawUrl.match(/(?:id=|\/d\/|open\?id=|file\/d\/)([a-zA-Z0-9_-]{25,})/);
+  return match ? match[1] : null;
+}
 
-  if (driveIdMatch && driveIdMatch[1]) {
-    const fileId = driveIdMatch[1];
-    // Google's high-performance thumbnail/CDN endpoint
-    return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200`;
+export function normalizeImageUrl(rawUrl: string): string {
+  if (!rawUrl) return '';
+  const trimmed = rawUrl.trim();
+  const fileId = extractDriveFileId(trimmed);
+  if (fileId) {
+    // lh3.googleusercontent.com works seamlessly across all mobile browsers & devices
+    return `https://lh3.googleusercontent.com/d/${fileId}=w1000`;
   }
-
   return trimmed;
 }
 
 export function getStoredScriptUrl(): string {
-  if (typeof window === 'undefined') return DEFAULT_APPS_SCRIPT_URL;
-  const stored = localStorage.getItem(STORAGE_KEY_APPS_SCRIPT_URL);
-  if (!stored || stored.trim() === '') {
-    return DEFAULT_APPS_SCRIPT_URL;
-  }
-  return stored.trim();
+  return localStorage.getItem(STORAGE_KEY_SCRIPT_URL) || DEFAULT_APPS_SCRIPT_URL;
 }
 
 export function setStoredScriptUrl(url: string): void {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(STORAGE_KEY_APPS_SCRIPT_URL, url.trim());
-  }
+  localStorage.setItem(STORAGE_KEY_SCRIPT_URL, url.trim());
 }
 
-export function getDeletedWishIds(): string[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_DELETED_IDS);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
+// Fallback demo wishes
+const DEMO_WISHES: Wish[] = [
+  {
+    id: 'demo-1',
+    name: 'Aiden & Sophie',
+    relationship: 'Best Friends',
+    wish: 'Happy 25th Quarter-Century milestone, Judath! May your year ahead be filled with world travel, big laughs, and boundless happiness.',
+    photoUrl: '/assets/polaroid_placeholder_1790532097729.jpg',
+    timestamp: '2026-09-27T08:00:00Z',
+    source: 'demo'
+  },
+  {
+    id: 'demo-2',
+    name: 'Uncle Robert',
+    relationship: 'Family',
+    wish: 'Dear Judath, watching you grow into such a graceful, ambitious explorer has been our greatest joy. Happy 25th birthday!',
+    photoUrl: '/assets/teddy_bear_judath_1790532074650.jpg',
+    timestamp: '2026-09-27T07:30:00Z',
+    source: 'demo'
+  },
+  {
+    id: 'demo-3',
+    name: 'College Crew',
+    relationship: 'Squad',
+    wish: 'To the queen of spontaneous road trips! Cheers to 25 fabulous years and all the new destinations waiting for you.',
+    photoUrl: '/assets/teddy_bear_kith_1790532086458.jpg',
+    timestamp: '2026-09-27T06:15:00Z',
+    source: 'demo'
+  }
+];
+
+export async function fetchWishesFromSheet(customUrl?: string): Promise<Wish[]> {
+  const url = customUrl || getStoredScriptUrl();
+  if (!url) {
     return [];
   }
-}
 
-export function addDeletedWishId(id: string): void {
-  if (typeof window === 'undefined') return;
-  const list = getDeletedWishIds();
-  if (!list.includes(id)) {
-    list.push(id);
-    localStorage.setItem(STORAGE_KEY_DELETED_IDS, JSON.stringify(list));
-  }
-}
-
-export function getCustomLocalWishes(): Wish[] {
-  if (typeof window === 'undefined') return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_LOCAL_WISHES);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveCustomLocalWish(wish: Wish): void {
-  if (typeof window === 'undefined') return;
-  const list = getCustomLocalWishes();
-  list.unshift(wish);
-  localStorage.setItem(STORAGE_KEY_LOCAL_WISHES, JSON.stringify(list));
-}
-
-/**
- * Extracts a Google Spreadsheet ID from a URL if possible.
- */
-export function extractSpreadsheetId(url: string): string | null {
-  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  return match ? match[1] : null;
-}
-
-/**
- * Lightweight, robust CSV Parser capable of handling quoted cells, commas, and newlines.
- */
-export function parseCsvRows(csvText: string): string[][] {
-  const rows: string[][] = [];
-  let currentRow: string[] = [];
-  let currentCell = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < csvText.length; i++) {
-    const char = csvText[i];
-    const nextChar = csvText[i + 1];
-
-    if (char === '"') {
-      if (inQuotes && nextChar === '"') {
-        currentCell += '"';
-        i++; // skip next quote
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      currentRow.push(currentCell.trim());
-      currentCell = '';
-    } else if ((char === '\r' || char === '\n') && !inQuotes) {
-      if (char === '\r' && nextChar === '\n') {
-        i++;
-      }
-      currentRow.push(currentCell.trim());
-      if (currentRow.some((c) => c.length > 0)) {
-        rows.push(currentRow);
-      }
-      currentRow = [];
-      currentCell = '';
-    } else {
-      currentCell += char;
-    }
-  }
-
-  if (currentCell.length > 0 || currentRow.length > 0) {
-    currentRow.push(currentCell.trim());
-    if (currentRow.some((c) => c.length > 0)) {
-      rows.push(currentRow);
-    }
-  }
-
-  return rows;
-}
-
-/**
- * Maps CSV headers dynamically to Wish fields.
- */
-function mapCsvHeaders(headers: string[]) {
-  const norm = headers.map((h) => h.toLowerCase().trim());
-  let nameIdx = -1;
-  let relIdx = -1;
-  let wishIdx = -1;
-  let imageIdx = -1;
-  let timeIdx = -1;
-
-  norm.forEach((h, idx) => {
-    if (h.includes('name') || h === 'who') {
-      if (nameIdx === -1) nameIdx = idx;
-    } else if (h.includes('relation') || h.includes('connection')) {
-      if (relIdx === -1) relIdx = idx;
-    } else if (h.includes('wish') || h.includes('message') || h.includes('birthday wish') || h.includes('blessing')) {
-      if (wishIdx === -1) wishIdx = idx;
-    } else if (h.includes('image') || h.includes('photo') || h.includes('picture') || h.includes('memorable')) {
-      if (imageIdx === -1) imageIdx = idx;
-    } else if (h.includes('timestamp') || h.includes('date') || h.includes('time')) {
-      if (timeIdx === -1) timeIdx = idx;
-    }
-  });
-
-  // Fallback defaults if not matched by name
-  if (nameIdx === -1 && headers.length > 1) nameIdx = 1;
-  if (relIdx === -1 && headers.length > 2) relIdx = 2;
-  if (wishIdx === -1 && headers.length > 3) wishIdx = 3;
-  if (imageIdx === -1 && headers.length > 4) imageIdx = 4;
-
-  return { nameIdx, relIdx, wishIdx, imageIdx, timeIdx };
-}
-
-export interface FetchResult {
-  wishes: Wish[];
-  isLive: boolean;
-  sourceType: 'apps_script' | 'google_sheet_csv' | 'sample_preview';
-  error?: string;
-}
-
-export async function fetchWishesFromSheet(): Promise<FetchResult> {
-  const configuredUrl = getStoredScriptUrl().trim();
-  const deletedIds = getDeletedWishIds();
-  const customWishes = getCustomLocalWishes().filter((w) => !deletedIds.includes(w.id));
-
-  // If no source is configured yet, return custom local wishes or sample starter wishes
-  if (!configuredUrl) {
-    const starter = INITIAL_SAMPLE_WISHES.filter((w) => !deletedIds.includes(w.id));
-    const combined = [...customWishes, ...starter];
-    return {
-      wishes: combined,
-      isLive: false,
-      sourceType: 'sample_preview',
-    };
-  }
-
-  // Case 1: Google Sheet URL provided (direct CSV / GViz mode)
-  const sheetId = extractSpreadsheetId(configuredUrl);
-  if (sheetId || configuredUrl.includes('docs.google.com/spreadsheets')) {
-    try {
-      const targetSheetId = sheetId || '';
-      // GViz CSV export endpoint works with "Anyone with link can view" or published sheets
-      const csvUrls = [
-        `https://docs.google.com/spreadsheets/d/${targetSheetId}/gviz/tq?tqx=out:csv`,
-        `https://docs.google.com/spreadsheets/d/${targetSheetId}/export?format=csv`,
-        configuredUrl.includes('output=csv') ? configuredUrl : '',
-      ].filter(Boolean);
-
-      let csvText = '';
-      let fetchErr: Error | null = null;
-
-      for (const url of csvUrls) {
-        try {
-          const resp = await fetch(url);
-          if (resp.ok) {
-            csvText = await resp.text();
-            if (csvText && !csvText.includes('<!DOCTYPE html>')) {
-              break;
-            }
-          }
-        } catch (e) {
-          fetchErr = e as Error;
-        }
-      }
-
-      if (!csvText || csvText.includes('<!DOCTYPE html>')) {
-        throw new Error(
-          'Could not read Google Sheet CSV directly. Ensure the Google Sheet is set to "Anyone with the link can view" or use Google Apps Script (Code.gs).'
-        );
-      }
-
-      const rows = parseCsvRows(csvText);
-      if (rows.length < 2) {
-        return {
-          wishes: customWishes,
-          isLive: true,
-          sourceType: 'google_sheet_csv',
-        };
-      }
-
-      const headers = rows[0];
-      const { nameIdx, relIdx, wishIdx, imageIdx, timeIdx } = mapCsvHeaders(headers);
-
-      const parsed: Wish[] = [];
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        const name = nameIdx !== -1 && row[nameIdx] ? row[nameIdx].trim() : '';
-        const wish = wishIdx !== -1 && row[wishIdx] ? row[wishIdx].trim() : '';
-        if (!name && !wish) continue;
-
-        const rowId = String(i + 1);
-        if (deletedIds.includes(rowId)) continue;
-
-        const rel = relIdx !== -1 && row[relIdx] ? row[relIdx].trim() : 'Friend';
-        const rawImg = imageIdx !== -1 && row[imageIdx] ? row[imageIdx].trim() : '';
-        const timestamp = timeIdx !== -1 && row[timeIdx] ? row[timeIdx].trim() : '';
-
-        parsed.push({
-          id: rowId,
-          name: name || 'A Loving Friend',
-          relationship: rel || 'Friend',
-          wish: wish || 'Happy Birthday Judath!',
-          image: normalizeImageUrl(rawImg),
-          timestamp: timestamp || undefined,
-        });
-      }
-
-      return {
-        wishes: [...customWishes, ...parsed],
-        isLive: true,
-        sourceType: 'google_sheet_csv',
-      };
-    } catch (sheetErr: unknown) {
-      const msg = sheetErr instanceof Error ? sheetErr.message : 'Error fetching Google Sheet';
-      const starter = INITIAL_SAMPLE_WISHES.filter((w) => !deletedIds.includes(w.id));
-      return {
-        wishes: [...customWishes, ...starter],
-        isLive: false,
-        sourceType: 'sample_preview',
-        error: msg,
-      };
-    }
-  }
-
-  // Case 2: Google Apps Script Web App URL (Primary standard mode)
-  try {
-    const response = await fetch(configuredUrl, {
+    const fetchUrl = `${url}?action=getWishes&t=${Date.now()}`;
+    const response = await fetch(fetchUrl, {
       method: 'GET',
       headers: {
-        Accept: 'application/json',
-      },
+        'Accept': 'application/json'
+      }
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: Failed to reach Google Apps Script`);
+      throw new Error(`Server responded with ${response.status}`);
     }
 
     const data = await response.json();
+    let rawItems: any[] = [];
 
-    if (!Array.isArray(data)) {
-      if (data && typeof data === 'object' && 'error' in data) {
-        throw new Error(String(data.error));
-      }
-      throw new Error('Invalid response format received from Google Apps Script Web App');
+    if (Array.isArray(data)) {
+      rawItems = data;
+    } else if (data && Array.isArray(data.wishes)) {
+      rawItems = data.wishes;
+    } else if (data && Array.isArray(data.data)) {
+      rawItems = data.data;
+    } else {
+      return [];
     }
 
-    const parsedWishes: Wish[] = data
-      .filter((item: Record<string, unknown>, index: number) => {
-        const id = String(item.id || item.rowId || index + 1);
-        return !deletedIds.includes(id);
-      })
-      .map((item: Record<string, unknown>, index: number) => ({
-        id: String(item.id || item.rowId || index + 1),
-        name: String(item.name || item.Name || 'A Loving Friend').trim(),
-        relationship: String(item.relationship || item.Relationship || 'Friend').trim(),
-        wish: String(item.wish || item.Wish || item.message || '').trim(),
-        image: normalizeImageUrl(String(item.image || item.Image || item.photo || item.Photo || '')),
-        timestamp: item.timestamp ? String(item.timestamp) : undefined,
-      }));
+    const parsed: Wish[] = rawItems.map((item, index) => {
+      const name = item.name || item.fullName || item['Your Name'] || item['Name'] || 'A Loving Well-wisher';
+      const relationship = item.relationship || item['Relationship to Judath'] || item['Relationship'] || 'Friend / Family';
+      const wish = item.wish || item.message || item['Your Birthday Wish'] || item['Birthday Wish'] || 'Wishing you the happiest birthday!';
+      const rawPhoto = item.photoUrl || item.imageUrl || item.photo || item['Photo'] || item['Memorable photo with Judath'] || '';
+      const photoUrl = normalizeImageUrl(rawPhoto);
+      const timestamp = item.timestamp || item['Timestamp'] || new Date().toISOString();
+      const rowNumber = item.rowNumber || (index + 2);
 
-    return {
-      wishes: [...customWishes, ...parsedWishes],
-      isLive: true,
-      sourceType: 'apps_script',
-    };
-  } catch (err: unknown) {
-    const errorMessage = err instanceof Error ? err.message : 'Network error reaching Google Apps Script';
-    const starter = INITIAL_SAMPLE_WISHES.filter((w) => !deletedIds.includes(w.id));
-    return {
-      wishes: [...customWishes, ...starter],
-      isLive: false,
-      sourceType: 'sample_preview',
-      error: errorMessage,
-    };
+      return {
+        id: item.id ? String(item.id) : `sheet-${index}-${Date.now()}`,
+        name: String(name).trim(),
+        relationship: String(relationship).trim(),
+        wish: String(wish).trim(),
+        photoUrl: photoUrl || undefined,
+        timestamp: String(timestamp),
+        source: 'sheet',
+        rowNumber
+      };
+    });
+
+    return parsed;
+  } catch (err) {
+    console.warn('Apps Script fetch failed:', err);
+    throw err;
   }
 }
 
-export interface DeleteResult {
-  success: boolean;
-  message?: string;
-}
-
-export async function deleteWishFromSheet(id: string, pin: string): Promise<DeleteResult> {
-  const configuredUrl = getStoredScriptUrl().trim();
-
-  // Validate that PIN is not completely empty
-  if (!pin || !pin.trim()) {
-    return {
-      success: false,
-      message: 'Please enter your Admin PIN.',
-    };
+export async function deleteWishRemotely(params: {
+  pin: string;
+  rowNumber?: number;
+  id?: string;
+  name?: string;
+  timestamp?: string;
+}): Promise<{ success: boolean; message?: string }> {
+  const url = getStoredScriptUrl();
+  if (!url) {
+    throw new Error('No Apps Script URL configured.');
   }
 
-  // If in Preview / Test Mode or local wish
-  if (!configuredUrl || !configuredUrl.includes('script.google.com')) {
-    // Record as deleted locally
-    addDeletedWishId(id);
-
-    // Also remove from custom local wishes if exists
-    if (typeof window !== 'undefined') {
-      const list = getCustomLocalWishes().filter((w) => w.id !== id);
-      localStorage.setItem(STORAGE_KEY_LOCAL_WISHES, JSON.stringify(list));
-    }
-
-    return {
-      success: true,
-      message: 'Wish removed successfully.',
-    };
-  }
-
-  // Google Apps Script permanent deletion
   try {
-    const response = await fetch(configuredUrl, {
+    const postPayload = JSON.stringify({
+      action: 'deleteWish',
+      pin: params.pin,
+      rowNumber: params.rowNumber,
+      id: params.id,
+      name: params.name,
+      timestamp: params.timestamp
+    });
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
+        'Content-Type': 'text/plain;charset=utf-8'
       },
-      body: JSON.stringify({
-        action: 'delete',
-        id: String(id),
-        pin: String(pin).trim(),
-      }),
+      body: postPayload
     });
 
     const result = await response.json();
-
-    if (result && result.success) {
-      addDeletedWishId(id);
-      return { success: true };
-    }
-
-    return {
-      success: false,
-      message: result.error || result.message || 'Incorrect Admin PIN or deletion failed.',
-    };
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : 'Deletion request failed';
-    return {
-      success: false,
-      message: `Failed to communicate with Google Apps Script: ${errorMsg}`,
-    };
+    return result;
+  } catch (err: any) {
+    console.error('Remote delete failed:', err);
+    throw new Error(err.message || 'Failed to contact delete endpoint');
   }
+}
+
+export function getCachedWishes(): Wish[] {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_WISHES);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return DEMO_WISHES;
+}
+
+export function saveCachedWishes(wishes: Wish[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_WISHES, JSON.stringify(wishes));
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+export async function getWishes(forceRefresh = false): Promise<Wish[]> {
+  if (!forceRefresh) {
+    const cached = getCachedWishes();
+    if (cached && cached.length > 0 && cached[0].source === 'sheet') {
+      return cached;
+    }
+  }
+
+  try {
+    const remote = await fetchWishesFromSheet();
+    if (remote && remote.length > 0) {
+      saveCachedWishes(remote);
+      return remote;
+    }
+  } catch (e) {
+    console.warn('Using cached wishes due to fetch error:', e);
+  }
+
+  const cached = getCachedWishes();
+  return cached.length > 0 ? cached : DEMO_WISHES;
 }
