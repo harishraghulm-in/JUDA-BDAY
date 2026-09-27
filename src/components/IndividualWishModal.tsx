@@ -1,161 +1,107 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { X, Heart, Sparkles, Trash2 } from 'lucide-react';
-import { Wish } from '../types';
-import polaroidPlaceholder from '../assets/images/polaroid_placeholder_1790532097729.jpg';
+import { Wish, extractDriveFileId } from '../services/wishesService';
 
 interface IndividualWishModalProps {
-  wish: Wish | null;
+  wish: Wish;
   onClose: () => void;
-  onDeleteWish?: (wish: Wish) => void;
 }
 
-export const IndividualWishModal: React.FC<IndividualWishModalProps> = ({
-  wish,
-  onClose,
-  onDeleteWish,
-}) => {
-  if (!wish) return null;
-
-  // Format relationship and name: "Your Brother Victor wished you…"
-  const relationshipLabel = wish.relationship ? wish.relationship.trim() : 'Friend';
-  const nameLabel = wish.name ? wish.name.trim() : 'Someone special';
-
-  // Clean up if relationship starts with "Your" already
-  const greetingHeader = relationshipLabel.toLowerCase().startsWith('your ')
-    ? `${relationshipLabel} ${nameLabel} wished you…`
-    : `Your ${relationshipLabel} ${nameLabel} wished you…`;
-
+export const IndividualWishModal: React.FC<IndividualWishModalProps> = ({ wish, onClose }) => {
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
-        {/* Backdrop */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="fixed inset-0 bg-[#0f0704]/80 backdrop-blur-sm"
-        />
+    <div 
+      className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn"
+      onClick={onClose}
+    >
+      <div 
+        className="relative max-w-2xl w-full bg-[#fdfbf7] text-amber-950 rounded-2xl shadow-2xl p-6 md:p-8 border-4 border-amber-900/20 overflow-hidden"
+        style={{
+          backgroundImage: 'radial-gradient(#ebd9b3 1px, transparent 1px)',
+          backgroundSize: '20px 20px'
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Decorative corner ribbons */}
+        <div className="absolute -top-10 -right-10 w-24 h-24 bg-red-700/80 rotate-45 flex items-end justify-center pb-1 text-white text-[10px] font-bold tracking-widest shadow-md">
+          25TH
+        </div>
 
-        {/* Modal Parchment Card */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.92, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.94, y: 15 }}
-          transition={{ type: 'spring', damping: 25, stiffness: 280 }}
-          className="relative z-10 w-full max-w-xl bg-[#fcf8ee] text-[#2c170d] rounded-2xl p-6 sm:p-8 shadow-[0_25px_60px_rgba(0,0,0,0.8),0_0_0_1px_rgba(210,163,109,0.4)] border-2 border-[#e6d3b3] my-8"
-        >
-          {/* Close button */}
+        {/* Vintage Postmark stamp */}
+        <div className="flex justify-between items-start border-b border-amber-900/20 pb-4 mb-6">
+          <div>
+            <span className="text-xs uppercase tracking-widest font-mono text-amber-800/70">Special Delivery For Judath</span>
+            <h2 className="text-2xl md:text-3xl font-serif font-bold text-amber-950 mt-1">
+              {wish.name}
+            </h2>
+            <div className="inline-block mt-1 px-2.5 py-0.5 bg-amber-800/10 text-amber-900 rounded-full text-xs font-serif italic border border-amber-900/15">
+              {wish.relationship}
+            </div>
+          </div>
+
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-[#f2e2c4] text-[#4a2b16] hover:bg-[#dfc499] hover:text-[#2c170d] flex items-center justify-center transition-colors shadow-xs cursor-pointer"
-            aria-label="Close wish modal"
+            className="w-9 h-9 rounded-full bg-amber-900/10 hover:bg-amber-900/20 text-amber-950 flex items-center justify-center text-lg transition"
           >
-            <X className="w-5 h-5" />
+            ✕
           </button>
+        </div>
 
-          {/* Decorative Corner Ornaments */}
-          <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-[#b0885a]/50" />
-          <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-[#b0885a]/50" />
-          <div className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-[#b0885a]/50" />
-          <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-[#b0885a]/50" />
-
-          {/* Wax seal / stamp decoration */}
-          <div className="flex items-center justify-center mb-5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#f4e6ce] rounded-full border border-[#d9ba8c]/60 text-xs font-serif tracking-widest text-[#844b20] uppercase">
-              <Sparkles className="w-3.5 h-3.5 text-[#c47b35]" />
-              A Loving Birthday Memory
-              <Sparkles className="w-3.5 h-3.5 text-[#c47b35]" />
-            </div>
-          </div>
-
-          {/* Dynamic Header */}
-          <h2 className="font-serif text-2xl sm:text-3xl text-center font-semibold text-[#30190c] mb-6 leading-tight">
-            {greetingHeader}
-          </h2>
-
-          {/* Wish Message in elegant quotes / handwriting style */}
-          <div className="relative bg-[#f8f1de] p-5 sm:p-6 rounded-xl border border-[#e5d4b5] shadow-inner mb-6">
-            <span className="absolute top-1 left-2 font-serif text-4xl text-[#cba271]/50 leading-none select-none">
-              “
-            </span>
-            <p className="font-serif text-lg sm:text-xl text-[#3b2112] italic leading-relaxed px-4 text-center">
-              {wish.wish || 'Wishing you boundless joy, love, peace, and blessings on your birthday!'}
-            </p>
-            <span className="absolute bottom-1 right-3 font-serif text-4xl text-[#cba271]/50 leading-none select-none">
-              ”
-            </span>
-          </div>
-
-          {/* Memory Intro */}
-          <div className="text-center mb-4">
-            <p className="font-handwriting text-2xl sm:text-3xl text-[#925424] font-medium">
-              And here is your memory with {nameLabel}… 💛
-            </p>
-          </div>
-
-          {/* Memory Image Polaroid Frame */}
-          <div className="relative mx-auto max-w-sm bg-white p-3.5 pb-5 rounded-lg shadow-[0_12px_28px_rgba(0,0,0,0.25)] border border-[#e8dbc6] transform rotate-[-0.8deg] transition-transform hover:rotate-0">
-            {/* Washi tape accent */}
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-24 h-6 bg-[#eed7ad]/80 backdrop-blur-xs border-y border-[#d2b581]/50 shadow-xs rotate-[-1.5deg]" />
-
-            <div className="w-full aspect-square rounded overflow-hidden bg-[#faf3e7] relative flex items-center justify-center border border-[#ece0cc]">
-              {wish.image ? (
+        {/* Content body */}
+        <div className="flex flex-col md:flex-row gap-6 items-center md:items-start max-h-[65vh] overflow-y-auto pr-2 custom-scrollbar">
+          {wish.photoUrl && (
+            <div className="w-full md:w-56 shrink-0 bg-white p-3 rounded-lg shadow-md border border-amber-900/15 transform -rotate-1 hover:rotate-0 transition duration-300">
+              <div className="w-full aspect-[4/5] overflow-hidden rounded bg-amber-50">
                 <img
-                  src={wish.image}
-                  alt={`Memory with ${nameLabel}`}
-                  referrerPolicy="no-referrer"
+                  src={wish.photoUrl}
+                  alt={wish.name}
                   className="w-full h-full object-cover"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = polaroidPlaceholder;
+                    const img = e.currentTarget;
+                    const currentSrc = img.src;
+                    const fileId = extractDriveFileId(wish.photoUrl || '');
+                    if (fileId && !currentSrc.includes('drive.google.com/thumbnail')) {
+                      img.src = `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
+                    } else if (fileId && !currentSrc.includes('drive.google.com/uc')) {
+                      img.src = `https://drive.google.com/uc?export=view&id=${fileId}`;
+                    } else {
+                      img.src = '/assets/polaroid_placeholder_1790532097729.jpg';
+                    }
                   }}
                 />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-[#fdfaf2]">
-                  <img
-                    src={polaroidPlaceholder}
-                    alt="Vintage memory placeholder"
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover opacity-90"
-                  />
-                </div>
-              )}
+              </div>
+              <p className="text-center font-serif text-[11px] text-amber-900/70 mt-2 italic">
+                {wish.name} & Judath
+              </p>
+            </div>
+          )}
+
+          <div className="flex-1 flex flex-col justify-between">
+            <div className="relative">
+              <span className="text-5xl font-serif text-amber-800/20 absolute -top-4 -left-2 select-none">“</span>
+              <p className="font-serif text-stone-800 text-base md:text-lg leading-relaxed relative z-10 pt-2 whitespace-pre-line italic">
+                {wish.wish}
+              </p>
+              <span className="text-5xl font-serif text-amber-800/20 float-right select-none">”</span>
             </div>
 
-            {/* Handwritten name on polaroid bottom */}
-            <div className="mt-3 flex items-center justify-between px-1">
-              <span className="font-handwriting text-2xl text-[#2c170d]">{nameLabel}</span>
-              <span className="font-serif italic text-xs text-[#8c674a]">{relationshipLabel}</span>
+            <div className="mt-6 pt-4 border-t border-amber-900/10 flex items-center justify-between text-xs font-mono text-amber-900/60">
+              <span>With all our love</span>
+              <span>{new Date(wish.timestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
             </div>
           </div>
+        </div>
 
-          {/* Action buttons */}
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-            <button
-              onClick={onClose}
-              className="px-6 py-2.5 bg-[#422212] hover:bg-[#5a311b] text-[#fbf7ee] rounded-xl font-serif text-sm tracking-wide shadow-md transition-all hover:scale-102 flex items-center gap-2 cursor-pointer"
-            >
-              <Heart className="w-4 h-4 fill-[#d28f52] text-[#d28f52]" />
-              Keep in My Heart
-            </button>
-
-            {onDeleteWish && (
-              <button
-                onClick={() => {
-                  onClose();
-                  onDeleteWish(wish);
-                }}
-                className="px-4 py-2.5 bg-[#fae8e5] hover:bg-[#f5d3cd] text-[#9c2d1b] border border-[#e5a89e] rounded-xl font-serif text-xs tracking-wider uppercase transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
-                title="Delete this wish with Admin PIN"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete Wish</span>
-              </button>
-            )}
-          </div>
-        </motion.div>
+        {/* Footer */}
+        <div className="mt-6 pt-4 border-t border-amber-900/20 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-5 py-2 bg-amber-900 text-amber-100 hover:bg-amber-950 rounded-xl font-serif text-sm transition shadow"
+          >
+            Close Letter
+          </button>
+        </div>
       </div>
-    </AnimatePresence>
+    </div>
   );
 };
+
+export default IndividualWishModal;
