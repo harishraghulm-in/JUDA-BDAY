@@ -1,205 +1,248 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Sparkles, 
-  Heart, 
-  Send, 
-  RefreshCw, 
-  ArrowLeft, 
-  Volume2, 
-  VolumeX, 
-  Plus, 
-  Calendar,
-  Trash2
+import confetti from 'canvas-confetti';
+import { motion } from 'motion/react';
+import {
+  ArrowLeft,
+  ExternalLink,
+  RefreshCw,
+  Trash2,
+  Heart,
+  Sparkles,
+  Settings,
+  PlusCircle,
+  Link2,
+  CheckCircle2,
+  AlertCircle,
+  Eye,
 } from 'lucide-react';
-import { getWishes, getStoredScriptUrl, deleteWishRemotely, extractDriveFileId, Wish } from '../services/wishesService';
-import AddWishModal from './AddWishModal';
-import DeleteWishModal from './DeleteWishModal';
+import { Wish } from '../types';
 import { GOOGLE_FORM_URL } from '../config';
-
-const AUDIO_SRC = 'https://assets.mixkit.co/music/preview/mixkit-a-very-happy-christmas-897.mp3';
-const POLAROID_FALLBACK_IMAGE = '/assets/polaroid_placeholder_1790532097729.jpg';
+import { IndividualWishModal } from './IndividualWishModal';
+import { DeleteWishModal } from './DeleteWishModal';
+import { SettingsModal } from './SettingsModal';
+import { AddWishModal } from './AddWishModal';
+import { getStoredScriptUrl, extractDriveFileId } from '../services/wishesService';
+import polaroidPlaceholder from '../assets/images/polaroid_placeholder_1790532097729.jpg';
 
 interface KithKinPageProps {
-  onBack: () => void;
+  wishes: Wish[];
+  onBackToLanding: () => void;
+  onRefresh: () => void;
+  onDeleteWish: (id: string, pin: string) => Promise<{ success: boolean; message?: string }>;
+  onAddWish?: (wish: Wish) => void;
+  isLoading?: boolean;
+  isLive?: boolean;
 }
 
-export const KithKinPage: React.FC<KithKinPageProps> = ({ onBack }) => {
-  const [wishes, setWishes] = useState<Wish[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [audio] = useState(() => new Audio(AUDIO_SRC));
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+export const KithKinPage: React.FC<KithKinPageProps> = ({
+  wishes,
+  onBackToLanding,
+  onRefresh,
+  onDeleteWish,
+  onAddWish,
+  isLoading = false,
+  isLive = false,
+}) => {
+  const [selectedWish, setSelectedWish] = useState<Wish | null>(null);
   const [wishToDelete, setWishToDelete] = useState<Wish | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-  // Load wishes
-  const loadWishes = async (refresh = false) => {
-    if (refresh) setIsRefreshing(true);
-    else setLoading(true);
-
-    try {
-      const data = await getWishes(refresh);
-      setWishes(data);
-    } catch (err) {
-      console.error('Error fetching wishes:', err);
-    } finally {
-      setLoading(false);
-      setIsRefreshing(false);
-    }
-  };
-
+  // Trigger celebratory golden confetti on page enter
   useEffect(() => {
-    loadWishes();
+    const goldPalette = ['#ffd700', '#f6c343', '#df9f38', '#fce293', '#b8860b', '#fff2b2'];
+    
+    // Wave 1: Gentle center-burst
+    confetti({
+      particleCount: 45,
+      spread: 70,
+      origin: { y: 0.25, x: 0.5 },
+      colors: goldPalette,
+      scalar: 0.9,
+      ticks: 250,
+      gravity: 0.8,
+      startVelocity: 25,
+      shapes: ['circle', 'square'],
+      disableForReducedMotion: true,
+    });
 
-    audio.loop = true;
-    audio.volume = 0.4;
+    // Wave 2: Left corner soft shower
+    const timer1 = setTimeout(() => {
+      confetti({
+        particleCount: 30,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0.1, y: 0.35 },
+        colors: goldPalette,
+        scalar: 0.85,
+        ticks: 220,
+        gravity: 0.7,
+        startVelocity: 30,
+      });
+    }, 350);
 
-    const playPromise = audio.play();
-    if (playPromise !== undefined) {
-      playPromise
-        .then(() => setIsPlaying(true))
-        .catch(() => setIsPlaying(false));
-    }
+    // Wave 3: Right corner soft shower
+    const timer2 = setTimeout(() => {
+      confetti({
+        particleCount: 30,
+        angle: 120,
+        spread: 55,
+        origin: { x: 0.9, y: 0.35 },
+        colors: goldPalette,
+        scalar: 0.85,
+        ticks: 220,
+        gravity: 0.7,
+        startVelocity: 30,
+      });
+    }, 600);
 
     return () => {
-      audio.pause();
+      clearTimeout(timer1);
+      clearTimeout(timer2);
     };
   }, []);
 
-  const toggleMusic = () => {
-    if (isPlaying) {
-      audio.pause();
-      setIsPlaying(false);
-    } else {
-      audio.play().then(() => setIsPlaying(true)).catch(console.error);
-    }
-  };
+  const scriptUrl = getStoredScriptUrl();
 
-  // Perform permanent delete
-  const handleDeleteWish = async (pin: string) => {
-    if (!wishToDelete) return;
-
-    await deleteWishRemotely({
-      pin,
-      rowNumber: wishToDelete.rowNumber,
-      id: wishToDelete.id,
-      name: wishToDelete.name,
-      timestamp: wishToDelete.timestamp
-    });
-
-    // Remove from local view
-    setWishes(prev => prev.filter(w => w.id !== wishToDelete.id));
-    setWishToDelete(null);
+  // Organic slight rotation for polaroid effect
+  const getRotation = (index: number) => {
+    const rotations = [-1.5, 1.2, -0.8, 1.6, -1.2, 0.9, -1.8, 1.4];
+    return rotations[index % rotations.length];
   };
 
   return (
-    <div className="min-h-screen bg-[#faf6f0] text-stone-800 font-sans selection:bg-amber-200">
-      {/* Top Navbar */}
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-amber-900/10 px-4 py-3 sm:px-8 flex items-center justify-between">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 text-amber-900 hover:text-amber-950 font-serif font-medium text-sm sm:text-base group transition"
-        >
-          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-          <span>Exit to Entrance</span>
-        </button>
+    <div className="relative min-h-screen w-full bg-[#1e110a] text-[#fbf8f0] pb-28">
+      {/* Background vintage texture & subtle glow */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(217,143,76,0.12)_0%,rgba(30,17,10,0.98)_65%)]"
+      />
 
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Form Link */}
-          {GOOGLE_FORM_URL && (
+      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-6">
+        {/* Navigation Bar */}
+        <header className="flex items-center justify-between py-4 border-b border-[#442717] mb-8">
+          <button
+            onClick={onBackToLanding}
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#2a170d] hover:bg-[#3d2214] text-[#eedcb8] border border-[#5c3721] transition-all text-xs font-serif tracking-wide cursor-pointer shadow-sm"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-[#d99f5e]" />
+            <span>Return to Doors</span>
+          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#341b10] hover:bg-[#462617] text-[#eedcb8] border border-[#643a22] transition-colors text-xs font-serif cursor-pointer shadow-sm"
+              title="Add a wish directly"
+            >
+              <PlusCircle className="w-3.5 h-3.5 text-[#d99f5e]" />
+              <span>Add Wish</span>
+            </button>
+
+            <button
+              onClick={onRefresh}
+              disabled={isLoading}
+              className="p-2 rounded-full bg-[#2a170d] hover:bg-[#3d2214] text-[#e3be8a] border border-[#5c3721] transition-colors disabled:opacity-50 cursor-pointer shadow-sm"
+              title="Refresh wishes from Google Sheet"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
+
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#2a170d] hover:bg-[#3d2214] text-[#be9b7d] hover:text-[#eedcb8] border border-[#5c3721] transition-colors text-xs cursor-pointer shadow-sm"
+              title="Configure Google Sheet / Apps Script"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline font-serif">Data Source</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Hero Section */}
+        <div className="text-center max-w-2xl mx-auto mb-10">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#2d190f] border border-[#59341d] text-xs font-serif tracking-widest text-[#d99f5e] uppercase mb-3">
+            <Sparkles className="w-3.5 h-3.5" />
+            Friends &amp; Family Scrapbook
+            <Sparkles className="w-3.5 h-3.5" />
+          </div>
+
+          <h1 className="font-serif text-4xl sm:text-5xl md:text-6xl font-normal text-[#fcf6e8] tracking-tight mb-4 drop-shadow">
+            💌 Wishes for Judath
+          </h1>
+
+          <p className="font-sans text-sm sm:text-base text-[#c9a78a] leading-relaxed mb-8">
+            Share your heartfelt birthday message, memories, and photos with Judath. Every wish you submit is delivered straight into her private birthday mailbox!
+          </p>
+
+          {/* LARGE "MAKE YOUR WISH" BUTTON */}
+          <div className="flex flex-col items-center">
             <a
               href={GOOGLE_FORM_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-full font-serif transition border border-amber-300"
+              className="group relative inline-flex items-center gap-3 px-8 sm:px-10 py-4 sm:py-5 rounded-2xl bg-gradient-to-b from-[#e8d2af] to-[#cba676] hover:from-[#f3e0c0] hover:to-[#d6b282] text-[#2c170d] font-serif text-lg sm:text-xl font-bold tracking-wide shadow-[0_12px_35px_rgba(217,143,76,0.35),0_0_0_2px_#eed7b5] hover:shadow-[0_16px_45px_rgba(235,175,60,0.5),0_0_0_3px_#f4e3c8] transition-all duration-300 hover:scale-103 active:scale-98 cursor-pointer"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Google Form</span>
+              <Heart className="w-6 h-6 fill-[#8f471b] text-[#8f471b] group-hover:scale-110 transition-transform" />
+              <span>MAKE YOUR WISH</span>
+              <ExternalLink className="w-5 h-5 text-[#8f471b] opacity-80 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
             </a>
-          )}
 
-          {/* Add Wish Button */}
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm bg-amber-800 hover:bg-amber-900 text-amber-50 rounded-full font-serif shadow-sm transition"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Wish</span>
-          </button>
-
-          {/* Refresh Button */}
-          <button
-            onClick={() => loadWishes(true)}
-            disabled={isRefreshing}
-            className={`p-2 rounded-full hover:bg-amber-100 text-amber-900 transition ${isRefreshing ? 'animate-spin' : ''}`}
-            title="Refresh Wishes"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
-
-          {/* Music Toggle */}
-          <button
-            onClick={toggleMusic}
-            className="p-2 rounded-full hover:bg-amber-100 text-amber-900 transition"
-            title={isPlaying ? 'Mute Music' : 'Play Music'}
-          >
-            {isPlaying ? <Volume2 className="w-4 h-4 text-amber-700" /> : <VolumeX className="w-4 h-4 text-stone-400" />}
-          </button>
-        </div>
-      </header>
-
-      {/* Hero Banner */}
-      <section className="relative overflow-hidden py-12 px-4 sm:px-8 text-center bg-gradient-to-b from-amber-100/70 via-amber-50/50 to-transparent">
-        <div className="max-w-2xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-200/60 text-amber-950 rounded-full text-xs font-serif tracking-wider uppercase mb-3">
-            <Sparkles className="w-3.5 h-3.5 text-amber-700" />
-            <span>Celebration Scrapbook</span>
+            <span className="font-handwriting text-xl text-[#dfb88c] mt-3">
+              opens the private wish form 🌻
+            </span>
           </div>
-          <h1 className="text-3xl sm:text-5xl font-serif font-bold text-amber-950 tracking-tight">
-            Kith & Kin Gallery
-          </h1>
-          <p className="mt-3 text-stone-600 font-serif text-sm sm:text-base max-w-lg mx-auto leading-relaxed">
-            Every smile, memory, and heartfelt blessing sent for Judath's 25th birthday milestone.
-          </p>
         </div>
-      </section>
 
-      {/* Main Grid Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-8 pb-20">
-        {loading ? (
-          <div className="py-24 text-center">
-            <RefreshCw className="w-8 h-8 mx-auto text-amber-700 animate-spin mb-4" />
-            <p className="font-serif text-stone-600">Gathering the letters & photographs...</p>
+        {/* Live Status indicator */}
+        <div className="flex items-center justify-between text-xs text-[#a88262] font-serif border-t border-[#381f12] pt-4 mb-8">
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+            <span>
+              {isLive
+                ? 'Connected directly to Google Sheets'
+                : 'Using cached wishes (click refresh or configure)'}
+            </span>
+          </div>
+          <div>
+            <span>{wishes.length} {wishes.length === 1 ? 'wish' : 'wishes'} collected</span>
+          </div>
+        </div>
+
+        {/* Wishes Grid */}
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-20 text-[#be9b7d]">
+            <RefreshCw className="w-8 h-8 animate-spin text-[#d99f5e] mb-3" />
+            <p className="font-serif">Opening letters from mailbox...</p>
           </div>
         ) : wishes.length === 0 ? (
-          <div className="py-20 text-center bg-white rounded-3xl border border-amber-900/10 shadow-sm max-w-md mx-auto p-8">
-            <Heart className="w-12 h-12 text-amber-400 mx-auto mb-3" />
-            <h3 className="font-serif font-bold text-lg text-amber-950">No wishes recorded yet</h3>
-            <p className="text-sm text-stone-500 font-serif mt-1 mb-6">
-              Be the first to leave a warm message and picture for Judath!
-            </p>
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="px-5 py-2.5 bg-amber-800 hover:bg-amber-900 text-amber-50 rounded-full font-serif text-sm shadow transition"
-            >
-              Write First Wish
-            </button>
+          <div className="text-center py-16 px-4 rounded-3xl bg-[#28150c]/60 border border-[#4d2c18]">
+            <p className="font-serif text-lg text-[#ecd7b7] mb-2">No wishes in the mailbox yet!</p>
+            <p className="text-xs text-[#a6805f] mb-4">Be the first to leave a message using the button above.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 sm:gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
             {wishes.map((wish, index) => {
-              const rotation = (index % 5 - 2) * 1.5;
+              const rotation = getRotation(index);
               return (
-                <div
-                  key={wish.id || index}
+                <motion.div
+                  key={wish.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
                   style={{ transform: `rotate(${rotation}deg)` }}
-                  className="group relative bg-white p-4 pb-6 rounded shadow-md hover:shadow-xl hover:scale-105 transition-all duration-300 border border-amber-900/10 flex flex-col justify-between"
+                  className="group relative bg-[#fdfbf6] text-[#2c170d] p-4 sm:p-5 rounded-sm shadow-[0_10px_25px_rgba(0,0,0,0.6)] hover:shadow-[0_16px_35px_rgba(0,0,0,0.8)] hover:scale-102 transition-all duration-300 border border-[#e2d5c3] cursor-pointer"
+                  onClick={() => setSelectedWish(wish)}
                 >
-                  {/* Photo frame */}
-                  <div className="relative aspect-[4/5] bg-stone-100 overflow-hidden rounded mb-4 shadow-inner border border-amber-900/5">
+                  {/* Pushpin / Tape effect */}
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-16 h-6 bg-[#eed7b5]/75 border border-[#c9aa7f]/50 backdrop-blur-xs transform -rotate-2 pointer-events-none shadow-xs" />
+
+                  {/* Photo area */}
+                  <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#24130a] mb-4 rounded-xs border border-[#ddd0bc]">
                     <img
-                      src={wish.photoUrl || POLAROID_FALLBACK_IMAGE}
+                      src={wish.photoUrl || polaroidPlaceholder}
                       alt={wish.name}
+                      referrerPolicy="no-referrer"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       onError={(e) => {
                         const img = e.currentTarget;
@@ -210,75 +253,92 @@ export const KithKinPage: React.FC<KithKinPageProps> = ({ onBack }) => {
                         } else if (fileId && !currentSrc.includes('drive.google.com/uc')) {
                           img.src = `https://drive.google.com/uc?export=view&id=${fileId}`;
                         } else {
-                          img.src = POLAROID_FALLBACK_IMAGE;
+                          img.src = polaroidPlaceholder;
                         }
                       }}
                     />
-                    
-                    {/* Delete button (Visible on card for family/admin) */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-3">
+                      <span className="text-white text-xs font-serif flex items-center gap-1">
+                        <Eye className="w-3.5 h-3.5" /> Read letter
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Wish Message Excerpt */}
+                  <p className="font-handwriting text-xl sm:text-2xl text-[#361e12] leading-snug line-clamp-3 mb-4 min-h-[4rem]">
+                    "{wish.wish}"
+                  </p>
+
+                  {/* Sender Details */}
+                  <div className="border-t border-[#eedfc9] pt-3 flex items-center justify-between">
+                    <div>
+                      <p className="font-serif font-bold text-sm text-[#231209]">
+                        {wish.name}
+                      </p>
+                      <p className="font-sans text-[11px] text-[#855737]">
+                        {wish.relationship || 'Loved One'}
+                      </p>
+                    </div>
+
+                    {/* Admin Delete Action */}
                     <button
-                      onClick={() => setWishToDelete(wish)}
-                      className="absolute top-2 right-2 bg-red-600/80 hover:bg-red-700 text-white p-1.5 rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Delete wish"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setWishToDelete(wish);
+                      }}
+                      className="p-1.5 rounded-full hover:bg-[#ecd7ba] text-[#936442] hover:text-[#88211b] transition-colors cursor-pointer"
+                      title="Delete this wish (Admin PIN required)"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
-
-                  {/* Text details */}
-                  <div className="flex-1 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-baseline justify-between mb-1">
-                        <h3 className="font-serif font-bold text-base text-amber-950 truncate">
-                          {wish.name}
-                        </h3>
-                        <span className="text-[10px] text-amber-800 font-serif italic bg-amber-50 px-2 py-0.5 rounded-full border border-amber-900/10 shrink-0 ml-1">
-                          {wish.relationship}
-                        </span>
-                      </div>
-                      <p className="font-serif text-xs text-stone-600 leading-relaxed italic line-clamp-4">
-                        "{wish.wish}"
-                      </p>
-                    </div>
-
-                    <div className="mt-4 pt-3 border-t border-amber-900/10 flex items-center justify-between text-[10px] font-mono text-stone-400">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {new Date(wish.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                      </span>
-                      <button
-                        onClick={() => setWishToDelete(wish)}
-                        className="text-stone-400 hover:text-red-600 transition flex items-center gap-0.5"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                        <span>Delete</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>
         )}
-      </main>
+      </div>
 
-      {/* Add Wish Modal */}
-      {isAddModalOpen && (
-        <AddWishModal
-          onClose={() => setIsAddModalOpen(false)}
-          onWishAdded={() => {
-            setIsAddModalOpen(false);
-            loadWishes(true);
+      {/* Modals */}
+      {selectedWish && (
+        <IndividualWishModal
+          wish={selectedWish}
+          onClose={() => setSelectedWish(null)}
+          onDelete={(id, pin) => onDeleteWish(id, pin)}
+        />
+      )}
+
+      {wishToDelete && (
+        <DeleteWishModal
+          wishName={wishToDelete.name}
+          onClose={() => setWishToDelete(null)}
+          onConfirm={async (pin) => {
+            const res = await onDeleteWish(wishToDelete.id, pin);
+            if (res.success) {
+              setWishToDelete(null);
+            }
+            return res;
           }}
         />
       )}
 
-      {/* Delete Wish Modal */}
-      {wishToDelete && (
-        <DeleteWishModal
-          wish={wishToDelete}
-          onClose={() => setWishToDelete(null)}
-          onConfirm={handleDeleteWish}
+      {isSettingsOpen && (
+        <SettingsModal
+          onClose={() => setIsSettingsOpen(false)}
+          onSave={() => {
+            setIsSettingsOpen(false);
+            onRefresh();
+          }}
+        />
+      )}
+
+      {isAddModalOpen && (
+        <AddWishModal
+          onClose={() => setIsAddModalOpen(false)}
+          onAddWish={(wish) => {
+            if (onAddWish) onAddWish(wish);
+            setIsAddModalOpen(false);
+          }}
         />
       )}
     </div>
