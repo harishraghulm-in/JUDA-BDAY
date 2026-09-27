@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-handwriting: 'Caveat', cursive;
+  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+
+  --color-parchment-50: #fbf8f0;
+  --color-parchment-100: #f5eedb;
+  --color-parchment-200: #ecdfc3;
+  --color-parchment-300: #dfcba4;
+  --color-parchment-400: #cca976;
+  --color-vintage-brown: #2e1a11;
+  --color-vintage-dark: #1b0e08;
+  --color-vintage-gold: #c69248;
+  --color-vintage-teal: #3b6b6d;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 10px rgba(247, 197, 85, 0.5)) drop-shadow(0 0 25px rgba(235, 168, 52, 0.4));
+    transform: scale(1);
+  }
+  50% {
+    filter: drop-shadow(0 0 20px rgba(247, 218, 120, 0.8)) drop-shadow(0 0 45px rgba(235, 175, 60, 0.65));
+    transform: scale(1.025);
+  }
+}
+
+@keyframes float-gentle {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2.5s ease-in-out infinite;
+}
+
+.animate-float-gentle {
+  animation: float-gentle 4s ease-in-out infinite;
+}
+
+/* Custom scrollbar for vintage theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #1c120c;
+}
+::-webkit-scrollbar-thumb {
+  background: #543622;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #7d4f30;
+}
